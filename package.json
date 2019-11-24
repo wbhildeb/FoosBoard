@@ -2,7 +2,7 @@
   "name": "foosboard",
   "version": "1.0.0",
   "description": "An express app to track foosball games through slack",
-  "main": "app.js",
+  "main": "src/foosboard.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
