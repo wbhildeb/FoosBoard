@@ -18,6 +18,7 @@
   "homepage": "https://github.com/wbhildeb/FoosBoard#readme",
   "dependencies": {
     "express": "^4.17.1",
-    "firebase": "^7.4.0"
+    "firebase": "^7.4.0",
+    "unit.js": "^2.1.1"
   }
 }
