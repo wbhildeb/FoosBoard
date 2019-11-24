@@ -12,10 +12,20 @@ class CollectionRef
   {
     return db.collection('users');
   }
-  
+
   static Teams()
   {
     return db.collection('teams');
+  }
+
+  static SingleGames()
+  {
+    return db.collection('single-games');
+  }
+
+  static TeamGames()
+  {
+    return db.collection('team-games');
   }
 }
 
@@ -25,27 +35,39 @@ class DocRef
   {
     return CollectionRef.Users().doc(userID);
   }
-  
+
   /**
    * @param {string|User[]|string[]}
    */
   static Team(team)
   {
+    if (!team) throw new Error('Argument undefined: team');
+
     var teamID = typeof team === 'string' ?
       team :
       Database.GetTeamID(team);
 
     return CollectionRef.Teams().doc(teamID);
   }
+
+  static SingleGame(game)
+  {
+    return CollectionRef.SingleGames().doc(game);
+  }
+
+  static TeamGame(game)
+  {
+    return CollectionRef.TeamGames().doc(game);
+  }
 }
 
 
 
-module.exports = class Database
+ class Database
 {
-  static AddUser(userID, name)
+  static AddUser(user)
   {
-    var userRef = DocRef.User(userID);
+    var userRef = DocRef.User(user.id);
 
     return new Promise((resolve, reject) =>
     {
@@ -55,14 +77,14 @@ module.exports = class Database
         {
           if (snapshot.exists)
           {
-            const oldname = snapshot.data().name; 
-            if (oldname != name)
+            const oldname = snapshot.data().name;
+            if (oldname != user.name)
             {
               userRef
-                .update({name})
+                .update({name: user.name})
                 .then(() =>
                 {
-                  console.log(`Update user [${userID}] name: ${oldname} -> ${name}`);
+                  console.log(`Update user [${user.id}] name: ${oldname} -> ${user.name}`);
                   resolve();
                 });
             }
@@ -70,10 +92,10 @@ module.exports = class Database
           else
           {
             return userRef
-              .set({name})
+              .set({name: user.name})
               .then(() =>
               {
-                console.log(`Create user [id: ${userID}, name:${name}]`);
+                console.log(`Create user [id: ${user.id}, name:${user.name}]`);
                 resolve();
               });
           }
@@ -82,75 +104,126 @@ module.exports = class Database
   }
 
   /**
-   * Returns the members object that would be stored in a team for the given users
-   * @param {string[] | User[]} users
-   * @returns {Object}
+   * Adds the team's id to the users list of teams
+   *  Creates the user if they don't already exist in the database
+   * @param {User} user
+   * @param {string} teamID
+   * @returns {Promise<void>}
    */
-  static GetMembersObject(users)
+  static LinkUserToTeam(user, teamID)
   {
-    if (!users || !users[0]) return {};
-    
-    var members = {};
-    if (users[0].id)
-    {
-      // User objects
-      users.forEach(user => { members[user.id] = true; });
-    }
-    else
-    {
-      // IDs
-      users.forEach(id => { members[id] = true; });
-    }
-
-    return members;
+    return this
+      .AddUser(user)
+      .then(() =>
+      {
+        return DocRef
+          .User(user.id)
+          .update({
+            teams: { [teamID]: true }
+          });
+      });
   }
 
-  static AddUserToTeam(user, teamID)
+  /**
+   * Adds a game to the users list of games
+   *   Adds user if they don't already exist in the database
+   * @param {User} user
+   * @param {string} gameID
+   * @param {boolean} userWon
+   * @param {boolean} single true if single game, false if team game
+   * @param {Promise<void>}
+   */
+  static LinkUserToGame(user, gameID, userWon, single)
   {
-    return new Promise((resolve, reject) =>
-    {
-      this
-        .AddUser(user.id, user.name)
-        .then(() =>
-        {
+    var gameCategory = single ? 'single_' : 'team_';
+    gameCategory += userWon ? 'wins' : 'losses';
+
+    return this
+      .AddUser(user)
+      .then(() =>
+      {
+        return DocRef
+          .User(user.id)
+          .update({
+            games: { [gameCategory]: { [gameID]: true }}
+          });
+      });
+  }
+
+  /**
+   *
+   * @param {User[]} user
+   * @param {string} gameID
+   * @param {boolean} teamWon
+   */
+  static LinkTeamToGame(users, gameID, teamWon)
+  {
+    var teamID = this.GetTeamID(users);
+
+    return this
+      .AddTeam(users)
+      .then(() =>
+      {
+        var promises = [
           DocRef
-            .User(user.id)
+            .Team(teamID)
             .update({
-              teams:
-              {
-                [teamID]: true
-              }})
-            .then(() =>
-            {
-              console.log(`Update user [id: ${user.id}] teams: added ${teamID}`);
-              resolve();
+              games: {
+                [teamWon ? 'wins' : 'losses']:
+                {
+                  [gameID]: true
+                }
+              }
             })
-        });
-    });
+            .then(() => {
+              console.log(`Update team [id: ${teamID}] added ${teamWon ? 'win':'loss'} ${gameID}`);
+            })
+        ];
+
+        users.forEach(user =>
+          promises.push(this.LinkUserToGame(user, gameID, teamWon, false))
+        );
+
+        return Promise.all(promises);
+      });
   }
 
+  /**
+   * Outputs the team id that would correspond to the given users
+   * @param {string[]|User[]} users
+   * @returns {string}
+   */
   static GetTeamID(users)
   {
-    var userIDs;
-    if (team[0].id)
-    {
-      userIDs = team.map(user => user.id);
-    }
-    else
-    {
-      userIDs = team;
-    }
+    var userIDs = users[0].id ?
+      users.map(user => user.id) : users;
 
     userIDs.sort();
     var teamID = '';
     userIDs.forEach(id => teamID += id);
+    return teamID;
   }
 
+  /**
+   *
+   * @param {User[]} users
+   * @param {string} teamName
+   * @returns {Promise<void>}
+   */
   static AddTeam(users, teamName)
   {
-    if (!teamName)
+    const teamID = this.GetTeamID(users);
+    const teamRef = DocRef.Team(teamID);
+
+    var addUsers = [];
+    users.forEach(user => {
+      addUsers.push(this.LinkUserToTeam(user, teamID))
+    });
+
+    // Set a default team name from team members
+    var nameIsDefault = !teamName;
+    if (nameIsDefault)
     {
-      // Set Default team name from team members
       teamName = '';
       users.forEach(user => {
         teamName += user.name + ' ';
@@ -158,45 +231,82 @@ module.exports = class Database
       teamName = teamName.trimEnd();
     }
 
-    const teamID = this.GetTeamID(users);
-    const teamRef = DocRef.Team(teamID); 
-
-    return new Promise((resolve, reject) =>
-    {
-      teamRef
-        .get()
-        .then(snapshot =>
-        {
-          if (snapshot.exists && snapshot.data().name != teamName)
+    return Promise
+      .all(addUsers)
+      .then(() =>
+      {
+        return teamRef
+          .get()
+          .then(snapshot =>
           {
-            teamRef
-              .update({ name: teamName })
-              .then(() =>
+            const oldname = snapshot.data().name;
+            if (snapshot.exists && oldname != teamName && !nameIsDefault)
+            {
+              return teamRef.update({ name: teamName }).then(() =>
               {
-                console.log(`Update user [${userID}] name: ${oldname} -> ${name}`);
-                resolve();
+                console.log(`Update team [${teamID}] name: ${oldname} -> ${teamName}`);
               });
-          }
-          else
-          {
-            const promises = [];
-            promises.push(
-              teamRef.set({
-                name: teamName
-              })
-            );
-            
-            users.forEach(user =>
+            }
+            else if (!snapshot.exists)
             {
-              promises.push(this.AddUserToTeam(user, teamID));
-            });
+              var members = {};
+              users.forEach(user =>
+              {
+                members[user.id] = true;
+              });
 
-            Promise.all(promises).then(() =>
-            {
-              resolve();
-            });
-          }
-        });
-    });
+              return teamRef
+                .set({
+                  name: teamName,
+                  members
+                })
+                .then(() =>
+                {
+                  console.log(`Create team [id: ${teamID}, name: '${teamName}']`);
+                });
+            }
+          });
+      });
+  }
+
+  /**
+   * Adds a 1v1 game to the database
+   *  - Creates users in the database is they do not exist
+   * @param {User} winner
+   * @param {User} loser
+   */
+  static AddSingleGame(winner, loser)
+  {
+    return CollectionRef
+      .SingleGames()
+      .add({
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        winner: winner.id,
+        loser: loser.id
+      })
+      .then(docRef =>
+      {
+        console.log(`Create singles game [id: ${docRef.id}, winner: ${winner.id}, loser: ${loser.id}]`);
+        return Promise.all(
+          [this.LinkUserToGame(winner, docRef.id, true, true),
+          this.LinkUserToGame(loser, docRef.id, false, true)]
+        );
+      });
+  }
+
+  /**
+   * Adds a game between two teams to the database
+   *  - Creates the teams in the database if they do not exist
+   * @param {User[]} winners
+   * @param {User[]} losers
+   */
+  static AddTeamGame(winners, losers)
+  {
+    Promise.all(
+      this.AddTeam(winners),
+      this.AddTeam(losers)
+    ).then()
   }
 };
+
+module.exports = Database;
