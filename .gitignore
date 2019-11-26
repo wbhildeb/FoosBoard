@@ -1,4 +1,2 @@
 node_modules
 .vscode
-
-src/db-secret.js
