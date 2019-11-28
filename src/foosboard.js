@@ -368,6 +368,7 @@ router.post('/score', (req, res) =>
     text += '```';
 
     res.status(200).send({
+      response_type: 'in_channel',
       mrkdwn: true,
       text
     });
