@@ -54,6 +54,17 @@ const respondWrongFormat = function(res)
   });
 }
 
+const calculateScore = function(wins, losses)
+{
+  var z, phat, n;
+
+  z = 1.96;
+  n = wins + losses
+  phat = 1 * wins / n;
+
+  return (phat + z*z/(2*n) - z * Math.sqrt((phat*(1-phat)+z*z/(4*n))/n))/(1+z*z/n);
+}
+
 router.use(bodyParser.urlencoded({ extended: true }));
 
 router.post('/team', (req, res) =>
@@ -336,6 +347,12 @@ router.post('/score', (req, res) =>
       'Wins' + ' '.repeat(scoreColumnLen-4) +
       'Losses' + ' '.repeat(scoreColumnLen-6) +
       ' '.repeat(4) + '\n';
+
+    scores.forEach(player => {
+      player.score = calculateScore(player.wins, player.losses);
+    });
+
+    scores.sort((a, b) => a.score > b.score ? -1 : 1);
 
     scores.forEach(({name, wins, losses}) =>
     {
