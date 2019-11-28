@@ -86,8 +86,10 @@ class DocRef
                 {
                   console.log(`Update user [${user.id}] name: ${oldname} -> ${user.name}`);
                   resolve();
-                });
+                })
+                .catch(reject);
             }
+            resolve();
           }
           else
           {
@@ -97,7 +99,8 @@ class DocRef
               {
                 console.log(`Create user [id: ${user.id}, name:${user.name}]`);
                 resolve();
-              });
+              })
+              .catch(reject);
           }
         });
     });
@@ -212,61 +215,78 @@ class DocRef
    */
   static AddTeam(users, teamName)
   {
-    const teamID = this.GetTeamID(users);
-    const teamRef = DocRef.Team(teamID);
-
-    var addUsers = [];
-    users.forEach(user => {
-      addUsers.push(this.LinkUserToTeam(user, teamID))
-    });
-
-    // Set a default team name from team members
-    var nameIsDefault = !teamName;
-    if (nameIsDefault)
+    return new Promise((resolve, reject) =>
     {
-      teamName = '';
+      const teamID = this.GetTeamID(users);
+      const teamRef = DocRef.Team(teamID);
+
+      var addUsers = [];
       users.forEach(user => {
-        teamName += user.name + ' ';
+        addUsers.push(this.LinkUserToTeam(user, teamID))
       });
-      teamName = teamName.trimEnd();
-    }
 
-    return Promise
-      .all(addUsers)
-      .then(() =>
+      // Set a default team name from team members
+      var nameIsDefault = !teamName;
+      if (nameIsDefault)
       {
-        return teamRef
-          .get()
-          .then(snapshot =>
-          {
-            const oldname = snapshot.data().name;
-            if (snapshot.exists && oldname != teamName && !nameIsDefault)
-            {
-              return teamRef.update({ name: teamName }).then(() =>
-              {
-                console.log(`Update team [${teamID}] name: ${oldname} -> ${teamName}`);
-              });
-            }
-            else if (!snapshot.exists)
-            {
-              var members = {};
-              users.forEach(user =>
-              {
-                members[user.id] = true;
-              });
+        teamName = '';
+        users.forEach(user => {
+          teamName += user.name + ' ';
+        });
+        teamName = teamName.trimEnd();
+      }
 
-              return teamRef
-                .set({
-                  name: teamName,
-                  members
-                })
-                .then(() =>
+      Promise
+        .all(addUsers)
+        .then(() =>
+        {
+          teamRef
+            .get()
+            .then(snapshot =>
+            {
+              if (snapshot.exists)
+              {
+                const oldname = snapshot.data().name;
+                if (oldname === teamName || nameIsDefault)
                 {
-                  console.log(`Create team [id: ${teamID}, name: '${teamName}']`);
+                  resolve();
+                  return;
+                }
+
+                teamRef
+                  .update({ name: teamName })
+                  .then(() =>
+                  {
+                    console.log(`Update team [${teamID}] name: ${oldname} -> ${teamName}`);
+                    resolve();
+                  })
+                  .catch(reject);
+              }
+              else
+              {
+                var members = {};
+                users.forEach(user =>
+                {
+                  members[user.id] = true;
                 });
-            }
-          });
-      });
+
+                teamRef
+                  .set({
+                    name: teamName,
+                    members
+                  })
+                  .then(() =>
+                  {
+                    console.log(`Create team [id: ${teamID}, name: '${teamName}']`);
+                    resolve();
+                  })
+                  .catch(reject);
+              }
+            })
+            .catch(reject);
+        })
+        .catch(reject);
+    });
   }
 
   /**

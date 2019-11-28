@@ -1,5 +1,6 @@
 const env = require('./environment');
 
+var bodyParser = require('body-parser');
 var express = require('express');
 var router = express.Router();
 
@@ -53,6 +54,8 @@ const respondWrongFormat = function(res)
   });
 }
 
+router.use(bodyParser.urlencoded({ extended: true }));
+
 router.get('/fb_team', (req, res) =>
 {
   var phrases = [];
@@ -63,12 +66,14 @@ router.get('/fb_team', (req, res) =>
   }
   catch
   {
+    console.log('Parse failed');
     respondWrongFormat(res);
     return;
   }
 
   if (!phrases.length)
   {
+    console.log('Parsed no phrases');
     respondWrongFormat(res);
     return;
   }
@@ -104,6 +109,9 @@ router.get('/fb_team', (req, res) =>
         }
         else
         {
+          var phrasetypes = [];
+          phrases.forEach(p => phrasetypes.push(p.type));
+          console.log(phrasetypes);
           respondWrongFormat(res);
           return;
         }
@@ -114,6 +122,7 @@ router.get('/fb_team', (req, res) =>
       users.forEach(usr => ids.add(usr.id));
       if (users.length < 2 || ids.size != users.length)
       {
+        console.log(users);
         respondWrongFormat(res);
         return;
       }
@@ -125,16 +134,18 @@ router.get('/fb_team', (req, res) =>
           res.status(200).send({
             response_type: 'in_channel',
             text: `Created team: ${name}`
-          })
+          });
+          return;
         })
-        .catch(() =>
+        .catch(error =>
         {
-          res.status(500).send({ text: 'Something went wrong on our end' });
+          res.status(500).send({ text: 'Something went wrong on our end', error });
         })
       break;
     }
     default:
     {
+      console.log('invalid command');
       respondWrongFormat(res);
       return;
     }
