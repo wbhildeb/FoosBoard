@@ -56,7 +56,7 @@ const respondWrongFormat = function(res)
 
 router.use(bodyParser.urlencoded({ extended: true }));
 
-router.get('/fb_team', (req, res) =>
+router.post('/fb_team', (req, res) =>
 {
   var phrases = [];
 
@@ -152,7 +152,7 @@ router.get('/fb_team', (req, res) =>
   }
 });
 
-router.get('/game', (req, res) =>
+router.post('/game', (req, res) =>
 {
     // TODO: don't hardcode data
     var winners = [{id: 'U0000', name: 'walker'}, {id: 'U0001', name: 'abel'}];
