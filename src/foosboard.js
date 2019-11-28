@@ -154,69 +154,140 @@ router.post('/team', (req, res) =>
 
 router.post('/game', (req, res) =>
 {
-    // TODO: don't hardcode data
-    var winners = [{id: 'U0000', name: 'walker'}, {id: 'U0001', name: 'abel'}];
-    var losers = [{id: 'U0002', name: 'rohan'}, {id: 'U0003', name: 'david'}];
+  var phrases = [];
+  try
+  {
+    phrases = parse(req.body.text);
+  }
+  catch
+  {
+    console.log('Parse failed');
+    respondWrongFormat(res);
+    return;
+  }
 
-    var is1v1 = winners.length == 1 && losers.length == 1;
-    var is2v2 = winners.length == 2 && losers.length == 2;
-
-    if (!is1v1 && !is2v2)
+  var whoWonText = null;
+  var team1 = [];
+  var team2 = [];
+  var curTeam = team1;
+  phrases.forEach(phrase =>
+  {
+    if (phrase.type === 'text' && curTeam === team1)
     {
-        // Must be either a 2v2 game or 1v1 game
-        respondWrongFormat(res);
-        return;
+      whoWonText = phrase.text;
+      curTeam = team2;
     }
-
-    var userIDs = new Set();
-    winners.forEach(user => userIDs.add(user.id));
-    losers.forEach(user => userIDs.add(user.id));
-
-    if (userIDs.size != winners.length + losers.length)
+    else if (phrase.type === 'user')
     {
-        // Player appears multiple times in the game
-        respondWrongFormat(res);
-        return;
+      curTeam.push({ id: phrase.id, name: phrase.name });
     }
+  });
 
-    if (winners.length === 1)
+  var winVerbs = [
+    'beat',
+    'destroyed',
+    'decimated',
+    'slapped',
+    'toasted',
+    'smacked',
+    'disrespected',
+    'dissed',
+    'slow rolled',
+    'owned',
+    'pwned',
+    'killed',
+    'pile-drived',
+    'eye-gouged'
+  ];
+
+  var winners = null;
+  var losers = null;
+  for (let i = 0; i < winVerbs.length; ++i)
+  {
+    if (whoWonText === winVerbs[i])
     {
-      database
-        .AddSingleGame(winners[0], losers[0])
-        .then(() =>
-        {
-          res.status(200).send({
-            response_type: 'in_channel',
-            text: 'Game recorded!'
-          });
-        })
-        .catch(() =>
-        {
-          res.status(200).send({
-            response_type: 'in_channel',
-            text: 'Unable to record game!'
-          });
-        })
+      winners = team1;
+      losers = team2;
+      break;
     }
-    else
+    else if (whoWonText === 'got ' + winVerbs[i] + ' by')
     {
-      database
-        .AddTeamGame(winners, losers)
-        .then(() =>
-        {
-          res.status(200).send({
-            response_type: 'in_channel',
-            text: `Game recorded!`
-          });
+      winners = team2;
+      losers = team1;
+      break;
+    }
+  }
+
+  if (!winners)
+  {
+    respondWrongFormat(res);
+    return;
+  }
+
+  var is1v1 = winners.length == 1 && losers.length == 1;
+  var is2v2 = winners.length == 2 && losers.length == 2;
+
+  if (!is1v1 && !is2v2)
+  {
+    // Must be either a 2v2 game or 1v1 game
+    respondWrongFormat(res);
+    return;
+  }
+
+  var userIDs = new Set();
+  winners.forEach(user => userIDs.add(user.id));
+  losers.forEach(user => userIDs.add(user.id));
+
+  if (userIDs.size != winners.length + losers.length)
+  {
+    // Player appears multiple times in the game
+    respondWrongFormat(res);
+    return;
+}
+
+  if (winners.length === 1)
+  {
+    database
+      .AddSingleGame(winners[0], losers[0])
+      .then(() =>
+      {
+        res.status(200).send({
+          response_type: 'in_channel',
+          text: 'Game recorded!'
         });
-    }
-
-    res.sendStatus(200);
+      })
+      .catch(() =>
+      {
+        res.status(200).send({
+          response_type: 'in_channel',
+          text: 'Unable to record game!'
+        });
+      })
+  }
+  else
+  {
+    database
+      .AddTeamGame(winners, losers)
+      .then(() =>
+      {
+        res.status(200).send({
+          response_type: 'in_channel',
+          text: `Game recorded!`
+        });
+      })
+      .catch(() =>
+      {
+        res.status(200).send({
+          response_type: 'in_channel',
+          text: 'Unable to record game!'
+        });
+      });
+  }
 });
 
 router.post('/score', (req, res) =>
 {
-  database.
+  // database.
 });
 
 module.exports = router;
