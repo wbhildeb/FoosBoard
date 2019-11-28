@@ -56,7 +56,7 @@ const respondWrongFormat = function(res)
 
 router.use(bodyParser.urlencoded({ extended: true }));
 
-router.post('/fb_team', (req, res) =>
+router.post('/team', (req, res) =>
 {
   var phrases = [];
 
@@ -164,7 +164,7 @@ router.post('/game', (req, res) =>
     if (!is1v1 && !is2v2)
     {
         // Must be either a 2v2 game or 1v1 game
-        res.sendStatus(400);
+        respondWrongFormat(res);
         return;
     }
 
@@ -175,13 +175,48 @@ router.post('/game', (req, res) =>
     if (userIDs.size != winners.length + losers.length)
     {
         // Player appears multiple times in the game
-        res.sendStatus(400);
+        respondWrongFormat(res);
         return;
     }
 
-    database.AddGame(winners, losers);
+    if (winners.length === 1)
+    {
+      database
+        .AddSingleGame(winners[0], losers[0])
+        .then(() =>
+        {
+          res.status(200).send({
+            response_type: 'in_channel',
+            text: 'Game recorded!'
+          });
+        })
+        .catch(() =>
+        {
+          res.status(200).send({
+            response_type: 'in_channel',
+            text: 'Unable to record game!'
+          });
+        })
+    }
+    else
+    {
+      database
+        .AddTeamGame(winners, losers)
+        .then(() =>
+        {
+          res.status(200).send({
+            response_type: 'in_channel',
+            text: `Game recorded!`
+          });
+        });
+    }
 
     res.sendStatus(200);
+});
+
+router.post('/score', (req, res) =>
+{
+  database.
 });
 
 module.exports = router;

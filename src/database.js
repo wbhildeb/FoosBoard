@@ -322,10 +322,30 @@ class DocRef
    */
   static AddTeamGame(winners, losers)
   {
-    Promise.all(
+    const winningTeamID = this.GetTeamID(winners);
+    const losingTeamID = this.GetTeamID(losers);
+
+    return Promise.all(
       this.AddTeam(winners),
       this.AddTeam(losers)
-    ).then()
+    ).then(() =>
+    {
+      return CollectionRef
+        .TeamGames()
+        .add({
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+          winner: winningTeamID,
+          loser: losingTeamID
+        })
+    })
+    .then(docRef =>
+    {
+      console.log(`Create team game [id: ${docRef.id}, winner: ${winningTeamID}, loser: ${losingTeamID}]`);
+      return Promise.all(
+        [this.LinkTeamToGame(winners, docRef.id, true),
+        this.LinkUserToGame(losers, docRef.id, false)]
+      );
+    });
   }
 };
 
