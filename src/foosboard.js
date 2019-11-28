@@ -313,6 +313,11 @@ router.post('/score', (req, res) =>
     case 'twos':
       getScores = database.GetTeamScores();
       break;
+    case 'nothing':
+      res.status(200).send({
+        response_type: 'in_channel',
+        text: 'OoooOooOooOoo look at me! Im so clever!'
+      });
     default:
       respondWrongFormat(res);
       return;
