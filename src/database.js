@@ -326,8 +326,8 @@ class DocRef
     const losingTeamID = this.GetTeamID(losers);
 
     return Promise.all(
-      this.AddTeam(winners),
-      this.AddTeam(losers)
+      [this.AddTeam(winners),
+      this.AddTeam(losers)]
     ).then(() =>
     {
       return CollectionRef
@@ -343,9 +343,86 @@ class DocRef
       console.log(`Create team game [id: ${docRef.id}, winner: ${winningTeamID}, loser: ${losingTeamID}]`);
       return Promise.all(
         [this.LinkTeamToGame(winners, docRef.id, true),
-        this.LinkUserToGame(losers, docRef.id, false)]
+        this.LinkTeamToGame(losers, docRef.id, false)]
       );
     });
+  }
+
+  static GetScores(solo, team)
+  {
+    var scoreboard = [];
+    return CollectionRef
+      .Users()
+      .get()
+      .then(snapshot =>
+      {
+        snapshot.docs.forEach(snapshot => {
+          var user = snapshot.data();
+
+          if (user.games)
+          {
+            var soloWins = user.games.single_wins ? Object.keys(user.games.single_wins).length : 0;
+            var soloLosses = user.games.single_losses ? Object.keys(user.games.single_losses).length : 0;
+            var teamWins = user.games.team_wins ? Object.keys(user.games.team_wins).length : 0;
+            var teamLosses = user.games.team_losses ? Object.keys(user.games.team_losses).length : 0;
+
+            var wins = (solo ? soloWins : 0) + (team ? teamWins : 0);
+            var losses = (solo ? soloLosses : 0) + (team ? teamLosses : 0);
+
+            if (wins || losses)
+            {
+              scoreboard.push({
+                name: user.name,
+                wins,
+                losses
+              });
+            }
+          }
+        });
+
+        return scoreboard;
+      });
+  }
+
+  static GetSoloScores()
+  {
+    return this.GetScores(true, false);
+  }
+
+  static GetCombinedScores()
+  {
+    return this.GetScores(true, true);
+  }
+
+  static GetTeamScores()
+  {
+    var scoreboard = [];
+    return CollectionRef
+      .Teams()
+      .get()
+      .then(snapshot =>
+      {
+        snapshot.docs.forEach(snapshot =>
+        {
+          var team = snapshot.data();
+          if (team.games)
+          {
+            var wins = team.games.wins ? Object.keys(team.games.wins).length : 0;
+            var losses = team.games.losses ? Object.keys(team.games.losses).length : 0;
+
+            if (wins || losses)
+            {
+              scoreboard.push({
+                name: team.name,
+                wins,
+                losses
+              });
+            }
+          }
+        });
+
+        return scoreboard;
+      });
   }
 };
 

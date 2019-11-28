@@ -174,7 +174,7 @@ router.post('/game', (req, res) =>
   {
     if (phrase.type === 'text' && curTeam === team1)
     {
-      whoWonText = phrase.text;
+      whoWonText = phrase.value;
       curTeam = team2;
     }
     else if (phrase.type === 'user')
@@ -220,6 +220,7 @@ router.post('/game', (req, res) =>
 
   if (!winners)
   {
+    console.log('no winners', whoWonText)
     respondWrongFormat(res);
     return;
   }
@@ -230,6 +231,7 @@ router.post('/game', (req, res) =>
   if (!is1v1 && !is2v2)
   {
     // Must be either a 2v2 game or 1v1 game
+    console.log('#winners:' + winners.length + '#losers:' + losers.length);
     respondWrongFormat(res);
     return;
   }
@@ -241,6 +243,7 @@ router.post('/game', (req, res) =>
   if (userIDs.size != winners.length + losers.length)
   {
     // Player appears multiple times in the game
+    console.log('dupe id');
     respondWrongFormat(res);
     return;
 }
@@ -256,8 +259,9 @@ router.post('/game', (req, res) =>
           text: 'Game recorded!'
         });
       })
-      .catch(() =>
+      .catch(err =>
       {
+        console.log(err);
         res.status(200).send({
           response_type: 'in_channel',
           text: 'Unable to record game!'
@@ -275,8 +279,9 @@ router.post('/game', (req, res) =>
           text: `Game recorded!`
         });
       })
-      .catch(() =>
+      .catch(err =>
       {
+        console.log(err)
         res.status(200).send({
           response_type: 'in_channel',
           text: 'Unable to record game!'
@@ -287,7 +292,64 @@ router.post('/game', (req, res) =>
 
 router.post('/score', (req, res) =>
 {
-  // database.
+  var scoreType = req.body.text || 'combined';
+  var getScores;
+  switch (scoreType)
+  {
+    case 'combined':
+    case 'combo':
+    case 'both':
+      getScores = database.GetCombinedScores();
+      break;
+    case 'solo':
+    case 'single':
+    case 'singles':
+    case 'ones':
+      getScores = database.GetSoloScores();
+      break;
+    case 'team':
+    case 'teams':
+    case 'doubles':
+    case 'twos':
+      getScores = database.GetTeamScores();
+      break;
+    default:
+      respondWrongFormat(res);
+      return;
+  }
+
+  getScores.then(scores =>
+  {
+    var nameColumnLen = scores.reduce((len, curVal) => Math.max(len, curVal.name.length), -1);
+    nameColumnLen = Math.max(nameColumnLen, 15) + 5;
+
+    const scoreColumnLen = 6
+
+    var text =
+      '```' +
+      'Player' + ' '.repeat(nameColumnLen-6) +
+      'Wins' + ' '.repeat(scoreColumnLen-4) +
+      'Losses' + ' '.repeat(scoreColumnLen-6) +
+      ' '.repeat(4) + '\n';
+
+    scores.forEach(({name, wins, losses}) =>
+    {
+      wins = String(wins);
+      losses = String(losses);
+      text +=
+        name + '.'.repeat(nameColumnLen-name.length) +
+        wins + '.'.repeat(scoreColumnLen-wins.length) +
+        losses + '.'.repeat(scoreColumnLen-losses.length + 4) +
+        '\n';
+    })
+
+    text += '```';
+
+    res.status(200).send({
+      mrkdwn: true,
+      text
+    });
+  });
 });
 
 module.exports = router;
