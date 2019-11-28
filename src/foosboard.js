@@ -5,23 +5,140 @@ var router = express.Router();
 
 var database = require('./database');
 
-router.use((req, res, next) =>
+const parse = function(text)
 {
-    if (env.DEBUG)
+  var phrases = [];
+  text
+    .split(' ')
+    .filter(x => !!x)
+    .forEach(word =>
     {
-        console.log('-'.repeat(20));
-        console.log(req.method + ' ' + req.originalUrl);
-        console.log('body:');
-        console.info(req.body);
-        console.log('-'.repeat(20));
-    }
+      var type = 'text';
 
-    next();
-});
+      // 0 : full match
+      // 1 : '@' (for user) or '#' for channel
+      // 2 : id
+      // 3 : name
+      var matches = word.match(/<(.)(.+)\|(.+)>/);
+      if (matches)
+      {
+        if (matches[1] === '@') type = 'user';
+        else if (matches[1] === '#') type = 'channel';
+        else throw new Error('Invalid format');
 
-router.get('/teamname', (req, res) =>
+        phrases.push({
+          type,
+          id: matches[2],
+          name: matches[3]
+        });
+      }
+      else if (phrases.length && phrases[phrases.length - 1].type === 'text')
+      {
+        phrases[phrases.length - 1].value += ' ' + word;
+      }
+      else
+      {
+        phrases.push({ type, value: word });
+      }
+    });
+
+  return phrases;
+}
+
+const respondWrongFormat = function(res)
 {
-    res.sendStatus(200);
+  res.status(200).send({
+    response_type: 'ephemeral',
+    text: 'Oopsie Woopsie! Someone was a tilly lil\' Korman and used the wrong format!'
+  });
+}
+
+router.get('/fb_team', (req, res) =>
+{
+  var phrases = [];
+
+  try
+  {
+    phrases = parse(req.body.text);
+  }
+  catch
+  {
+    respondWrongFormat(res);
+    return;
+  }
+
+  if (!phrases.length)
+  {
+    respondWrongFormat(res);
+    return;
+  }
+
+  var action = 'make';
+  var users = [];
+  if (phrases[0].type === 'text')
+  {
+    action = phrases[0].value;
+    phrases.shift();
+  }
+  else
+
+  switch (action)
+  {
+    case 'make':
+    case 'name':
+    case 'rename':
+    case 'create':
+    {
+      var users = [];
+      var name = null;
+      for (let i = 0; i < phrases.length; ++i)
+      {
+        if (phrases[i].type === 'user')
+        {
+          users.push({ id: phrases[i].id, name: phrases[i].name });
+        }
+        else if (phrases[i].type === 'text')
+        {
+          name = phrases[i].value;
+          break;
+        }
+        else
+        {
+          respondWrongFormat(res);
+          return;
+        }
+      }
+
+      // ensure unique ids and 2+ ppl per team
+      var ids = new Set();
+      users.forEach(usr => ids.add(usr.id));
+      if (users.length < 2 || ids.size != users.length)
+      {
+        respondWrongFormat(res);
+        return;
+      }
+
+      database
+        .AddTeam(users, name)
+        .then(() =>
+        {
+          res.status(200).send({
+            response_type: 'in_channel',
+            text: `Created team: ${name}`
+          })
+        })
+        .catch(() =>
+        {
+          res.status(500).send({ text: 'Something went wrong on our end' });
+        })
+      break;
+    }
+    default:
+    {
+      respondWrongFormat(res);
+      return;
+    }
+  }
 });
 
 router.get('/game', (req, res) =>
