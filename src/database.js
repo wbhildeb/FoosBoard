@@ -94,7 +94,7 @@ class DocRef
           else
           {
             return userRef
-              .set({name: user.name})
+              .set({name: user.name}, { merge: true })
               .then(() =>
               {
                 console.log(`Create user [id: ${user.id}, name:${user.name}]`);
@@ -122,7 +122,7 @@ class DocRef
         return DocRef
           .User(user.id)
           .update({
-            teams: { [teamID]: true }
+            ['teams.' + teamID]: true
           });
       });
   }
@@ -133,13 +133,13 @@ class DocRef
    * @param {User} user
    * @param {string} gameID
    * @param {boolean} userWon
-   * @param {boolean} single true if single game, false if team game
+   * @param {boolean} solo true if solo game, false if team game
    * @param {Promise<void>}
    */
-  static LinkUserToGame(user, gameID, userWon, single)
+  static LinkUserToGame(user, gameID, userWon, solo)
   {
-    var gameCategory = single ? 'single_' : 'team_';
-    gameCategory += userWon ? 'wins' : 'losses';
+    const result = userWon ? 'wins' : 'losses';
+    const division = solo ? 'solo' : 'team';
 
     return this
       .AddUser(user)
@@ -148,7 +148,7 @@ class DocRef
         return DocRef
           .User(user.id)
           .update({
-            games: { [gameCategory]: { [gameID]: true }}
+            [`games.${division}_${result}.${gameID}`]: true
           });
       });
   }
@@ -162,7 +162,7 @@ class DocRef
   static LinkTeamToGame(users, gameID, teamWon)
   {
     var teamID = this.GetTeamID(users);
-
+    const category = teamWon ? 'wins' : 'losses';
     return this
       .AddTeam(users)
       .then(() =>
@@ -171,12 +171,7 @@ class DocRef
           DocRef
             .Team(teamID)
             .update({
-              games: {
-                [teamWon ? 'wins' : 'losses']:
-                {
-                  [gameID]: true
-                }
-              }
+              [`games.${category}.${gameID}`]: true
             })
             .then(() => {
               console.log(`Update team [id: ${teamID}] added ${teamWon ? 'win':'loss'} ${gameID}`);
