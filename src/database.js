@@ -18,9 +18,9 @@ class CollectionRef
     return db.collection('teams');
   }
 
-  static SingleGames()
+  static SoloGames()
   {
-    return db.collection('single-games');
+    return db.collection('solo-games');
   }
 
   static TeamGames()
@@ -50,9 +50,9 @@ class DocRef
     return CollectionRef.Teams().doc(teamID);
   }
 
-  static SingleGame(game)
+  static SoloGame(game)
   {
-    return CollectionRef.SingleGames().doc(game);
+    return CollectionRef.SoloGames().doc(game);
   }
 
   static TeamGame(game)
@@ -62,8 +62,7 @@ class DocRef
 }
 
 
-
- class Database
+class Database
 {
   static AddUser(user)
   {
@@ -290,10 +289,10 @@ class DocRef
    * @param {User} winner
    * @param {User} loser
    */
-  static AddSingleGame(winner, loser)
+  static AddSoloGame(winner, loser)
   {
     return CollectionRef
-      .SingleGames()
+      .SoloGames()
       .add({
         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
         winner: winner.id,
@@ -301,7 +300,7 @@ class DocRef
       })
       .then(docRef =>
       {
-        console.log(`Create singles game [id: ${docRef.id}, winner: ${winner.id}, loser: ${loser.id}]`);
+        console.log(`Create solo's game [id: ${docRef.id}, winner: ${winner.id}, loser: ${loser.id}]`);
         return Promise.all(
           [this.LinkUserToGame(winner, docRef.id, true, true),
           this.LinkUserToGame(loser, docRef.id, false, true)]
@@ -356,8 +355,8 @@ class DocRef
 
           if (user.games)
           {
-            var soloWins = user.games.single_wins ? Object.keys(user.games.single_wins).length : 0;
-            var soloLosses = user.games.single_losses ? Object.keys(user.games.single_losses).length : 0;
+            var soloWins = user.games.solo_wins ? Object.keys(user.games.solo_wins).length : 0;
+            var soloLosses = user.games.solo_losses ? Object.keys(user.games.solo_losses).length : 0;
             var teamWins = user.games.team_wins ? Object.keys(user.games.team_wins).length : 0;
             var teamLosses = user.games.team_losses ? Object.keys(user.games.team_losses).length : 0;
 
