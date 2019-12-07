@@ -39,7 +39,7 @@ const getWinVerb = function()
 router.use('*', slack({
     scope: SCOPE,
     token: TOKEN,
-    store: '../data.json'
+    store: '../data.json',
     client_id: CLIENT_ID,
     client_secret: CLIENT_SECRET
   }))
