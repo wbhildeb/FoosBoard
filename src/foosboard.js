@@ -2,8 +2,9 @@ const { DEBUG, SCOPE, TOKEN, CLIENT_ID, CLIENT_SECRET } = require('./environment
 
 var bodyParser = require('body-parser');
 var express = require('express');
-// var slack = require('./slack');
 var router = express.Router();
+var FileStore = require('file-store')
+    , store = FileStore('data.json');
 
 var database = require('./database');
 var slack = require('express-slack');
@@ -39,7 +40,7 @@ const getWinVerb = function()
 router.use('/slack', slack({
     scope: SCOPE,
     token: TOKEN,
-    store: '../data.json',
+    store: 'data.json',
     client_id: CLIENT_ID,
     client_secret: CLIENT_SECRET
   }))
