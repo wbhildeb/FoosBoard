@@ -2,49 +2,10 @@ const env = require('./environment');
 
 var bodyParser = require('body-parser');
 var express = require('express');
+var slack = require('./slack');
 var router = express.Router();
 
 var database = require('./database');
-
-const parse = function(text)
-{
-  var phrases = [];
-  text
-    .split(' ')
-    .filter(x => !!x)
-    .forEach(word =>
-    {
-      var type = 'text';
-
-      // 0 : full match
-      // 1 : '@' (for user) or '#' for channel
-      // 2 : id
-      // 3 : name
-      var matches = word.match(/<(.)(.+)\|(.+)>/);
-      if (matches)
-      {
-        if (matches[1] === '@') type = 'user';
-        else if (matches[1] === '#') type = 'channel';
-        else throw new Error('Invalid format');
-
-        phrases.push({
-          type,
-          id: matches[2],
-          name: matches[3]
-        });
-      }
-      else if (phrases.length && phrases[phrases.length - 1].type === 'text')
-      {
-        phrases[phrases.length - 1].value += ' ' + word;
-      }
-      else
-      {
-        phrases.push({ type, value: word });
-      }
-    });
-
-  return phrases;
-}
 
 const respondWrongFormat = function(res)
 {
@@ -56,6 +17,8 @@ const respondWrongFormat = function(res)
 
 const calculateScore = function(wins, losses)
 {
+  if (wins === 0) return -losses;
+
   var z, phat, n;
 
   z = 1.96;
@@ -65,273 +28,181 @@ const calculateScore = function(wins, losses)
   return (phat + z*z/(2*n) - z * Math.sqrt((phat*(1-phat)+z*z/(4*n))/n))/(1+z*z/n);
 }
 
-router.use(bodyParser.urlencoded({ extended: true }));
+const getWinVerb = function()
+{
+  const verbs = ['beat', 'bested', 'demolished', 'destroyed', 'overtook', 'obliterated'];
+  return verbs[Math.floor(Math.random()*verbs.length)];
+}
+
+router
+  .use(bodyParser.urlencoded({ extended: true }))
+  .use('*', (req, res, next) =>
+  {
+    console.log(`${req.method} ${req.url}`);
+    console.log(`   session: ${req.sessionID}`);
+    console.log('   query:', req.query);
+    console.log('   body:', req.body);
+    console.log('-----------------------------------------------');
+    next();
+  })
+  .use(slack.BodyParser)
 
 router.post('/team', (req, res) =>
 {
-  var phrases = [];
-
-  try
+  const input = req.slack.input;
+  if (!req.slack.input.match(/(user)+text/))
   {
-    phrases = parse(req.body.text);
-  }
-  catch
-  {
-    console.log('Parse failed');
-    respondWrongFormat(res);
+    slack.SendResponseMessage(
+      res,
+      'Incorrect format for the command'
+    );
     return;
   }
 
-  if (!phrases.length)
+  const users = input
+    .filter(elem => elem.type == 'user')
+    .map(elem => ({ id: elem.id, name: elem.username }));
+  const userIDs = users.map(elem => elem.id);
+  const userIDsAreUnique = userIDs.length === new Set(userIDs).size;
+
+  if (!userIDsAreUnique)
   {
-    console.log('Parsed no phrases');
-    respondWrongFormat(res);
+    slack.SendResponseMessage(
+      res,
+      'Cannot have a duplicate user on a team'
+    );
     return;
   }
 
-  var action = 'make';
-  var users = [];
-  if (phrases[0].type === 'text')
-  {
-    action = phrases[0].value;
-    phrases.shift();
-  }
-  else
+  const teamName = input[input.length-1].text;
 
-  switch (action)
-  {
-    case 'make':
-    case 'name':
-    case 'rename':
-    case 'create':
+  slack.SendResponseMessage(
+    res,
+    `Creating team '${teamName}'...`
+  );
+
+  database
+    .AddTeam(users, teamName)
+    .then(() =>
     {
-      var users = [];
-      var name = null;
-      for (let i = 0; i < phrases.length; ++i)
-      {
-        if (phrases[i].type === 'user')
-        {
-          users.push({ id: phrases[i].id, name: phrases[i].name });
-        }
-        else if (phrases[i].type === 'text')
-        {
-          name = phrases[i].value;
-          break;
-        }
-        else
-        {
-          var phrasetypes = [];
-          phrases.forEach(p => phrasetypes.push(p.type));
-          console.log(phrasetypes);
-          respondWrongFormat(res);
-          return;
-        }
-      }
-
-      // ensure unique ids and 2+ ppl per team
-      var ids = new Set();
-      users.forEach(usr => ids.add(usr.id));
-      if (users.length < 2 || ids.size != users.length)
-      {
-        console.log(users);
-        respondWrongFormat(res);
-        return;
-      }
-
-      database
-        .AddTeam(users, name)
-        .then(() =>
-        {
-          res.status(200).send({
-            response_type: 'in_channel',
-            text: `Created team: ${name}`
-          });
-          return;
-        })
-        .catch(error =>
-        {
-          res.status(500).send({ text: 'Something went wrong on our end', error });
-        })
-      break;
-    }
-    default:
+      slack.SendResponseMessage(
+        req.slack.responseURL,
+        `Created team: '${teamName}'!`,
+        { in_channel: true }
+      );
+    })
+    .catch(error =>
     {
-      console.log('invalid command');
-      respondWrongFormat(res);
-      return;
-    }
-  }
+      slack.SendResponseMessage(
+        req.slack.responseURL,
+        'Something went wrong on our end, we weren\'t able to make your team :('
+      );
+    });
 });
 
 router.post('/game', (req, res) =>
 {
-  var phrases = [];
-  try
+  const input = req.slack.input;
+  if (!input.match(/(userusertextuseruser|usertextuser)/))
   {
-    phrases = parse(req.body.text);
-  }
-  catch
-  {
-    console.log('Parse failed');
-    respondWrongFormat(res);
+    slack.SendResponseMessage(
+      res,
+      'Incorrect format for the command'
+    );
     return;
   }
 
-  var whoWonText = null;
-  var team1 = [];
-  var team2 = [];
-  var curTeam = team1;
-  phrases.forEach(phrase =>
+  const is1v1 = !!input.match(/usertextuser/);
+  const whoWonText = is1v1 ? input[1].text : input[2].text;
+  if (whoWonText != 'beat')
   {
-    if (phrase.type === 'text' && curTeam === team1)
-    {
-      whoWonText = phrase.value;
-      curTeam = team2;
-    }
-    else if (phrase.type === 'user')
-    {
-      curTeam.push({ id: phrase.id, name: phrase.name });
-    }
-  });
-
-  var winVerbs = [
-    'beat',
-    'destroyed',
-    'decimated',
-    'slapped',
-    'toasted',
-    'smacked',
-    'disrespected',
-    'dissed',
-    'slow rolled',
-    'owned',
-    'pwned',
-    'killed',
-    'pile-drived',
-    'eye-gouged'
-  ];
-
-  var winners = null;
-  var losers = null;
-  for (let i = 0; i < winVerbs.length; ++i)
-  {
-    if (whoWonText === winVerbs[i])
-    {
-      winners = team1;
-      losers = team2;
-      break;
-    }
-    else if (whoWonText === 'got ' + winVerbs[i] + ' by')
-    {
-      winners = team2;
-      losers = team1;
-      break;
-    }
-  }
-
-  if (!winners)
-  {
-    console.log('no winners', whoWonText)
-    respondWrongFormat(res);
+    slack.SendResponseMessage(
+      res,
+      'You gotta use \'beat\'. I removed the fancy words for now, sorry...'
+    );
     return;
   }
 
-  var is1v1 = winners.length == 1 && losers.length == 1;
-  var is2v2 = winners.length == 2 && losers.length == 2;
+  const users = input
+    .filter(elem => elem.type == 'user')
+    .map(elem => ({ id: elem.id, name: elem.username }));
+  const userIDs = users.map(elem => elem.id);
+  const userIDsAreUnique = userIDs.length === new Set(userIDs).size;
 
-  if (!is1v1 && !is2v2)
+  if (!userIDsAreUnique)
   {
-    // Must be either a 2v2 game or 1v1 game
-    console.log('#winners:' + winners.length + '#losers:' + losers.length);
-    respondWrongFormat(res);
+    slack.SendResponseMessage(
+      res,
+      'Cannot have a duplicate player in a game'
+    );
     return;
   }
 
-  var userIDs = new Set();
-  winners.forEach(user => userIDs.add(user.id));
-  losers.forEach(user => userIDs.add(user.id));
+  slack.SendResponseMessage(
+    res,
+    'Recording the game now...',
+  );
 
-  if (userIDs.size != winners.length + losers.length)
-  {
-    // Player appears multiple times in the game
-    console.log('dupe id');
-    respondWrongFormat(res);
-    return;
-}
+  const winner = is1v1 ?
+    { id: input[0].id, name: input[0].username } :
+    [{ id: input[0].id, name: input[0].username }, { id: input[1].id, name: input[1].username }];
 
-  if (winners.length === 1)
-  {
-    database
-      .AddSingleGame(winners[0], losers[0])
-      .then(() =>
-      {
-        res.status(200).send({
-          response_type: 'in_channel',
-          text: 'Game recorded!'
-        });
-      })
-      .catch(err =>
-      {
-        console.log(err);
-        res.status(200).send({
-          response_type: 'in_channel',
-          text: 'Unable to record game!'
-        });
-      })
-  }
-  else
-  {
-    database
-      .AddTeamGame(winners, losers)
-      .then(() =>
-      {
-        res.status(200).send({
-          response_type: 'in_channel',
-          text: `Game recorded!`
-        });
-      })
-      .catch(err =>
-      {
-        console.log(err)
-        res.status(200).send({
-          response_type: 'in_channel',
-          text: 'Unable to record game!'
-        });
-      });
-  }
+  const loser = is1v1 ?
+    { id: input[2].id, name: input[2].username } :
+    [{ id: input[3].id, name: input[3].username }, { id: input[4].id, name: input[4].username }];
+
+  const getWinnerName = is1v1 ?
+    Promise.resolve(winner.name) : database.GetTeamName(winner);
+
+  const getLoserName = is1v1 ?
+    Promise.resolve(loser.name) : database.GetTeamName(loser);
+
+  Promise
+    .all([getWinnerName, getLoserName, recordGame])
+    .then((winnerName, loserName) =>
+    {
+      slack.SendResponseMessage(
+        req.slack.responseURL,
+        `New Game Recorded: ${winnerName} ${getWinVerb()} ${loserName}! GG`
+        { in_channel: true }
+      );
+    })
+    .catch(error =>
+    {
+      slack.SendResponseMessage(
+        req.slack.responseURL,
+        `Unable to record the game! Sorry :(`
+      );
+    });
 });
 
 router.post('/score', (req, res) =>
 {
-  var scoreType = req.body.text || 'combined';
-  var getScores;
-  switch (scoreType)
+  const input = req.slack.input;
+  if (!input.match(/(text)?/))
   {
-    case 'combined':
-    case 'combo':
-    case 'both':
-      getScores = database.GetCombinedScores();
-      break;
-    case 'solo':
-    case 'single':
-    case 'singles':
-    case 'ones':
-      getScores = database.GetSoloScores();
-      break;
-    case 'team':
-    case 'teams':
-    case 'doubles':
-    case 'twos':
-      getScores = database.GetTeamScores();
-      break;
-    case 'nothing':
-      res.status(200).send({
-        response_type: 'in_channel',
-        text: 'OoooOooOooOoo look at me! Im so clever!'
-      });
-    default:
-      respondWrongFormat(res);
-      return;
+    slack.SendResponseMessage(
+      res,
+      'Incorrect format for the command'
+    );
+    return;
+  }
+
+  var scoreType = req.body.text || 'combo';
+
+  const getScores =
+    scoreType === 'solo' ? database.GetSoloScores() :
+    scoreType === 'team' ? database.GetTeamScores() :
+    scoreType === 'combo' ? database.GetCombinedScores() :
+    null;
+
+  if (!getScores)
+  {
+    slack.SendResponseMessage(
+      res,
+      `Sorry, I don't recognize '${scoreType}' -- try 'solo', 'team' or 'combo'`
+    );
+    return;
   }
 
   getScores.then(scores =>
