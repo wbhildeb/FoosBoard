@@ -47,20 +47,20 @@ router.use('/slack', slack({
   .use('*', (req, res, next) =>
   {
     console.log(`${req.method} ${req.url}`);
-    console.log(`   session: ${req.sessionID}`);
     console.log('   query:', req.query);
     console.log('   body:', req.body);
     console.log('-----------------------------------------------');
     next();
   });
 
-slack.on('/team', (payload, bot) =>
-{
-  console.log(payload);
-  bot.reply('works!');
-});
+// slack.on('/team', (payload, bot) =>
+// {
+//   console.log(payload);
+//   bot.reply('works!');
+// });
 
-slack.on('/test', (payload, bot) => {
+slack.on('*', (payload, bot) => {
+  console.log(payload);
   bot.reply('works!');
 });
 
