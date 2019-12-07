@@ -163,7 +163,7 @@ router.post('/game', (req, res) =>
     {
       slack.SendResponseMessage(
         req.slack.responseURL,
-        `New Game Recorded: ${winnerName} ${getWinVerb()} ${loserName}! GG`
+        `New Game Recorded: ${winnerName} ${getWinVerb()} ${loserName}! GG`,
         { in_channel: true }
       );
     })
