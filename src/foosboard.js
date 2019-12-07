@@ -36,7 +36,7 @@ const getWinVerb = function()
 }
 
 
-router.use('*', slack({
+router.use('/slack', slack({
     scope: SCOPE,
     token: TOKEN,
     store: '../data.json',
@@ -55,8 +55,12 @@ router.use('*', slack({
 
 slack.on('/team', (payload, bot) =>
 {
-  bot.reply('works!');
   console.log(payload);
+  bot.reply('works!');
+});
+
+slack.on('/test', (payload, bot) => {
+  bot.reply('works!');
 });
 
 // router.post('/team', (req, res) =>
