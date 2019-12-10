@@ -3,11 +3,10 @@ const { DEBUG, SCOPE, TOKEN, CLIENT_ID, CLIENT_SECRET } = require('./environment
 var bodyParser = require('body-parser');
 var express = require('express');
 var router = express.Router();
-var FileStore = require('file-store')
-    , store = FileStore('data.json');
+const store = require('data-store')('slack-data');
 
 var database = require('./database');
-var slack = require('express-slack');
+var Slack = require('slack-devkit');
 
 const respondWrongFormat = function(res)
 {
@@ -36,33 +35,88 @@ const getWinVerb = function()
   return verbs[Math.floor(Math.random()*verbs.length)];
 }
 
-
-router.use('/slack', slack({
-    scope: SCOPE,
-    token: TOKEN,
-    store: 'data.json',
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET
-  }))
-  .use('*', (req, res, next) =>
+var print = name =>
+{
+  return (res, req, next) =>
   {
-    console.log(`${req.method} ${req.url}`);
-    console.log('   query:', req.query);
-    console.log('   body:', req.body);
-    console.log('-----------------------------------------------');
+    console.log(name);
     next();
+  }
+}
+
+const slk = new Slack({
+  scope: SCOPE,
+  client_id: CLIENT_ID,
+  client_secret: CLIENT_SECRET,
+  verification_token: TOKEN,
+  datastore: store
+});
+
+const slackRouter = slk.router(slk.settings);
+
+router.get('/slack', slackRouter, (req, res) => {
+  const { data, app_url } = req.slack;
+  const { ok } = data;
+
+  // an error happened during oauth
+  if (!ok) return res.json(data);
+
+  // Send a welcome message to the installer
+  // req.slack.api('chat.postMessage', {
+  //   channel: installer_user.app_home,
+  //   text: 'Thanks for installing me :bow:'
+  // });
+
+  // redirect to Slack
+  res.redirect(app_url);
+});
+
+router.post('/team', slackRouter, (req, res) => {
+  console.log(req.slack);
+  // respond to a slash command with a wave
+  req.slack.reply({
+    text: 'Hello :wave:'
   });
 
-// slack.on('/team', (payload, bot) =>
+  res.send();
+});
+
+// subrouter = express.Router();
+// subrouter.post('/', print('sub /'));
+// subrouter.post('*', print('sub *'));
+// subrouter.all('/item', print('sub /item'));
+
+// router.post('/', print('/'));
+// router.post('*', print('*'));
+// router.post('item', print('item'));
+// router.post('/item', print('/item'));
+// router.use('/sub', subrouter);
+// router.use('/slack', slack({
+//     scope: SCOPE,
+//     token: TOKEN,
+//     store: 'data.json',
+//     client_id: CLIENT_ID,
+//     client_secret: CLIENT_SECRET
+//   }))
+//   .use('/', (req, res, next) =>
+//   {
+//     console.log(`${req.method} ${req.url}`);
+//     console.log('   query:', req.query);
+//     console.log('   body:', req.body);
+//     console.log('-----------------------------------------------');
+//     next();
+//   });
+
+// router.post('/team', (payload, bot) =>
 // {
 //   console.log(payload);
 //   bot.reply('works!');
 // });
 
-slack.on('*', (payload, bot) => {
-  console.log(payload);
-  bot.reply('works!');
-});
+// slack.on('*', (payload, bot) => {
+//   console.log(payload);
+//   bot.reply('works!');
+// });
 
 // router.post('/team', (req, res) =>
 // {
@@ -74,7 +128,7 @@ slack.on('*', (payload, bot) => {
 //       'Incorrect format for the command'
 //     );
 //     return;
-//   }
+// }
 
 //   const users = input
 //     .filter(elem => elem.type == 'user')
